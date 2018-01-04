@@ -74,6 +74,12 @@ class MainHandler(tornado.web.RequestHandler):
 		self.requestmethod = "POST"
 		print ("POST CALLED")
 		self.write("<h1>THIS is a POST</h1>")
+		
+	def prepare(self):
+		print ("Called Prepare")
+
+	def on_finish(self):
+		print ("Called Finish")	
 
 def make_app():
 	return tornado.web.Application([
