@@ -7,24 +7,28 @@ import tornado.ioloop
 import tornado.web
 import tornado.web
 import opentracing
+from random import randint
+from time import sleep
 from opentracing import Tracer
-from instana import options
-from instana import tracer
-import opentracing.ext.tags as tags
+from instana import options as o
 import logging
+import opentracing as ot
+from instana import tracer
+import time
+import opentracing.ext.tags as ext
 
 
 class MainHandler(tornado.web.RequestHandler):
 
 	def initialize(self):
 		SERVICE = "🦄 Stan ❤️s Python 🦄"
-		tracer.init(options.Options(service=SERVICE, log_level=logging.DEBUG))
+		tracer.init(o.Options(service=SERVICE, log_level=logging.DEBUG))
 		print ("Calling initialize " + str(self) + str(SERVICE))
 		today = datetime.datetime.now()
 		print (today)
 		self.tracer = Tracer()
-		self.rootspan = self.tracer.start_span(operation_name='root')
-		self.rootspan.set_tag('RequestHandler','MainHandler')
+		self.span = self.tracer.start_span(operation_name='root')
+		self.span.set_tag('RequestHandler','MainHandler')
 		self.requestmethod = ""
 		self.clazzName = self.__class__.__name__
 
@@ -32,7 +36,16 @@ class MainHandler(tornado.web.RequestHandler):
 		@wraps(orig_func)
 		def wrapper(*args, **kwargs):
 			print ("Before Call >> " )
+			thisInstance = args[0]
+			parent_span = opentracing.tracer.start_span(operation_name="DemoSpan")
+			parent_span.set_tag(ext.COMPONENT, "Tornado")
+			parent_span.set_tag(ext.SPAN_KIND, ext.SPAN_KIND_RPC_SERVER)
+			parent_span.set_tag(ext.PEER_HOSTNAME, "localhost")
+			parent_span.set_tag(ext.HTTP_URL, "/")
+			parent_span.set_tag(ext.HTTP_METHOD, thisInstance.requestmethod)
+			parent_span.set_tag(ext.HTTP_STATUS_CODE, 200)
 			result = orig_func(*args, **kwargs)
+			parent_span.finish()
 			print (" << After Call")
 			return result
 		return wrapper
@@ -40,16 +53,6 @@ class MainHandler(tornado.web.RequestHandler):
 	@instana_span_decorator
 	def get(self):
 		self.requestmethod = "GET"
-		parent_span = opentracing.tracer.start_span(operation_name="tornade-request")
-		parent_span.set_tag(tags.COMPONENT, "Tornado")
-		parent_span.set_tag(tags.SPAN_KIND, tags.SPAN_KIND_RPC_SERVER)
-		parent_span.set_tag(tags.PEER_HOSTNAME, "localhost")
-		parent_span.set_tag(tags.HTTP_URL, "/tornado")
-		parent_span.set_tag(tags.HTTP_METHOD, "GET")
-		parent_span.set_tag(tags.HTTP_STATUS_CODE, 200)
-		status = self.__class__.get_status(self)
-		request = self.request
-		print(status)
 		print ("GET CALLED")
 		self.write("<h1>Welcome to the Python Tracing</h1>")
 		self.write("<hr></hr>")
@@ -61,7 +64,6 @@ class MainHandler(tornado.web.RequestHandler):
 		Installation : pip install instana into the virtual-env or container (hosted on pypi)
 		"""
 		self.write(welcomeMessage)
-		parent_span.finish()
 
 	@instana_span_decorator
 	def head(self):
@@ -79,7 +81,6 @@ def make_app():
 	])
 
 if __name__ == "__main__":
-
 	app = make_app()
 	portNumber = 8888
 	app.listen(portNumber)
